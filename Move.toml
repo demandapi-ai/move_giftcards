@@ -1,0 +1,15 @@
+[package]
+name = "user_profile"
+version = "1.0.0"
+authors = []
+
+[addresses]
+user_profile = "0xc0a4f49b38e09756f583eee695592d7e000c1027396378deada63746005e4193"
+giftcards_addr = "0xc0a4f49b38e09756f583eee695592d7e000c1027396378deada63746005e4193"
+
+[dev-addresses]
+
+[dependencies.AptosFramework]
+local = "./local_deps/aptos-core/aptos-move/framework/aptos-framework"
+
+[dev-dependencies]
