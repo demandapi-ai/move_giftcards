@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { useTranslation } from "react-i18next"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -7,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 import { toast } from "sonner"
 import { Gift, ArrowRight, Clock, AlertTriangle, Search, Filter } from "lucide-react"
+import { Link } from "react-router-dom"
 
 export default function Claim() {
     const { t } = useTranslation()
@@ -125,7 +127,11 @@ export default function Claim() {
                 <CardContent>
                     <div className="flex gap-3">
                         <Input placeholder="Enter Gift ID (e.g. 12345)" className="flex-1" />
-                        <Button className="bg-purple-600 hover:bg-purple-700">Lookup <ArrowRight className="ml-2 h-4 w-4" /></Button>
+                        <Button asChild className="bg-purple-600 hover:bg-purple-700">
+                            <Link to="/claim/redeem">
+                                Lookup <ArrowRight className="ml-2 h-4 w-4" />
+                            </Link>
+                        </Button>
                     </div>
                 </CardContent>
             </Card>
