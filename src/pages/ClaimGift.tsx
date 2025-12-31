@@ -5,7 +5,9 @@ import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { CONTRACT_ADDRESS } from "@/lib/aptos"
 import { toast } from "sonner"
-import { Gift, ArrowRight, Check } from "lucide-react"
+
+import { Gift, ArrowRight, Check, ArrowLeft } from "lucide-react"
+import { Link } from "react-router-dom"
 
 export default function ClaimGift() {
     const { t } = useTranslation()
@@ -78,6 +80,9 @@ export default function ClaimGift() {
         <div className="flex justify-center items-start lg:mt-10">
             <Card className="w-full max-w-md">
                 <CardHeader>
+                    <Link to="/claim" className="flex items-center text-sm text-gray-500 hover:text-purple-600 mb-4 transition-colors">
+                        <ArrowLeft className="h-4 w-4 mr-1" /> Back to Claims
+                    </Link>
                     <CardTitle>{t("claim_gift")}</CardTitle>
                     <CardDescription>Enter the Gift ID to claim your crypto.</CardDescription>
                 </CardHeader>
