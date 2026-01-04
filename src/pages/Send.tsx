@@ -3,14 +3,19 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { usePrivy } from "@privy-io/react-auth"
+import { useWallets, usePrivy, type WalletWithMetadata } from "@privy-io/react-auth"
+import { useSignRawHash } from "@privy-io/react-auth/extended-chains"
+import { Buffer } from "buffer"
+import { aptos, CONTRACT_ADDRESS } from "@/lib/aptos"
+import { AccountAddress, AccountAuthenticatorEd25519, Ed25519PublicKey, Ed25519Signature, generateSigningMessageForTransaction } from "@aptos-labs/ts-sdk"
+import { TOKENS } from "@/lib/tokens"
 import { toast } from "sonner"
 import { Mail, Twitter, MessageCircle, ArrowLeft, ArrowRight, Check, Copy, Upload, Palette, User, Download } from "lucide-react"
 import { toPng } from 'html-to-image';
@@ -21,15 +26,28 @@ import { getThemeById } from "@/lib/themeRegistry"
 import { generateEmailHtml } from "@/lib/emailUtils"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { LayoutTemplate, Instagram, Twitter as TwitterIcon, Smartphone } from "lucide-react"
+import { LayoutTemplate, Instagram, Twitter as TwitterIcon, Smartphone, Calendar as CalendarIcon } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { format, addDays } from "date-fns"
+import { cn } from "@/lib/utils"
+
+import { BulkRecipientInput } from "@/components/BulkRecipientInput"
+
+// Helper to ensure 0x prefix
+const ensure0x = (str: string) => str.startsWith('0x') ? str : `0x${str}`;
 
 const formSchema = z.object({
     recipientType: z.enum(["email", "twitter", "discord"]),
-    recipient: z.string().min(1, "Recipient is required"),
+    recipients: z.array(z.object({
+        id: z.string(),
+        value: z.string(),
+        type: z.enum(["email", "twitter", "discord"])
+    })).min(1, "At least one recipient is required"),
     amount: z.string().min(1, "Amount is required"),
     token: z.string().default("MOVE"),
     message: z.string().max(500).optional(),
-    expiryDays: z.string().default("30"),
+    expiryDate: z.date(),
     theme: z.string().default("modern"),
     senderName: z.string().optional(),
     logo: z.any().optional(), // File object
@@ -39,7 +57,23 @@ type FormData = z.infer<typeof formSchema>
 
 export default function Send() {
 
+    // Wallet hooks - use both useWallets and usePrivy for full coverage
     const { user } = usePrivy()
+    const { wallets } = useWallets()
+    const { signRawHash } = useSignRawHash()
+
+    // Find Movement wallet from linkedAccounts (same as Dashboard)
+    const movementWalletFromLinked = user?.linkedAccounts.find(
+        (account) => account.type === 'wallet' && account.chainType === 'aptos'
+    ) as WalletWithMetadata | undefined;
+
+    // Also check useWallets for external wallets that might support Movement
+    const movementWalletFromWallets = wallets.find((w: any) =>
+        (w.chainType === 'aptos' || w.chainType === 'movement') &&
+        typeof w.signAndSubmitTransaction === 'function'
+    );
+
+    const wallet = movementWalletFromWallets || wallets[0] // Prefer wallet with signing capability
     const [step, setStep] = useState(1)
     const [txHash, setTxHash] = useState("")
     const [marketplaceOpen, setMarketplaceOpen] = useState(false)
@@ -49,15 +83,17 @@ export default function Send() {
     const [logoUrl, setLogoUrl] = useState<string>("")
     const fileInputRef = useRef<HTMLInputElement>(null)
 
+    const [previewRecipientIndex, setPreviewRecipientIndex] = useState(0)
+
     const form = useForm<FormData>({
         resolver: zodResolver(formSchema) as any,
         defaultValues: {
             recipientType: "email",
-            recipient: "",
+            recipients: [],
             amount: "",
             token: "MOVE",
             message: "",
-            expiryDays: "30",
+            expiryDate: addDays(new Date(), 30),
             theme: "modern",
             senderName: "",
         },
@@ -85,7 +121,7 @@ export default function Send() {
         <GiftCardPreview
             amount={watchedValues.amount}
             token={watchedValues.token}
-            recipient={watchedValues.recipient}
+            recipient={watchedValues.recipients?.[previewRecipientIndex]?.value || "Recipient"}
             senderName={watchedValues.senderName}
             message={watchedValues.message}
             themeId={watchedValues.theme || 'modern'}
@@ -100,30 +136,198 @@ export default function Send() {
         { value: "discord", label: "Discord", icon: MessageCircle, desc: "Send via username#1234" },
     ]
 
-    const onSubmit = async (_values: FormData) => {
-        if (!user?.wallet?.address) {
-            // toast.error("Please connect your wallet first")
-            // return
-            toast.info("Simulating transaction (Wallet not connected)")
+    // Helper to convert recipient type string to number
+    const getRecipientTypeCode = (type: string): number => {
+        switch (type) {
+            case "email": return 1;
+            case "twitter": return 2;
+            case "discord": return 3;
+            default: return 1;
+        }
+    }
+
+    const onSubmit = async (values: FormData) => {
+        if (!wallet) {
+            toast.error("Please connect a wallet to send funds")
+            return
         }
 
         try {
-            toast.loading("Creating gift card on-chain...")
+            // Calculate expiry days from date
+            const expiryDays = Math.max(1, Math.floor(
+                (values.expiryDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+            ));
 
-            // Simulate transaction
-            await new Promise(r => setTimeout(r, 2000))
+            toast.loading(`Creating ${values.recipients.length} gift card(s)...`)
 
-            const mockTxHash = "0x" + Math.random().toString(16).slice(2, 18) + "..."
-            setTxHash(mockTxHash)
+            for (let i = 0; i < values.recipients.length; i++) {
+                const recipient = values.recipients[i];
+                console.log(`Processing recipient ${i + 1}: ${recipient.value}`);
+
+                // --- WALLET DETECTION ---
+                console.log("Wallets from useWallets:", wallets.map((w: any) => ({
+                    type: w.walletClientType,
+                    chainType: w.chainType,
+                    address: w.address,
+                    hasSignAndSubmit: typeof w.signAndSubmitTransaction === 'function'
+                })));
+                console.log("Movement wallet from linkedAccounts:", movementWalletFromLinked?.address);
+
+                // Check for external wallet with signing capability first
+                const externalWallet = wallets.find((w: any) =>
+                    (w.chainType === 'aptos' || w.chainType === 'movement') &&
+                    typeof w.signAndSubmitTransaction === 'function'
+                );
+
+                const selectedToken = TOKENS.find(t => t.symbol === values.token);
+                if (!selectedToken) throw new Error("Invalid token selected");
+
+                const isFA = !!selectedToken.faAddress;
+                const functionName = isFA
+                    ? `${CONTRACT_ADDRESS}::move_giftcards::create_giftcard_fa`
+                    : `${CONTRACT_ADDRESS}::move_giftcards::create_giftcard_move`;
+
+                const decimals = selectedToken.decimals;
+                const amountAmount = Math.floor(parseFloat(values.amount) * Math.pow(10, decimals));
+
+                const recipientAddr = "0x" + "0".repeat(64); // Dummy for now if needed, or actual if known
+
+                let functionArguments: any[] = [
+                    getRecipientTypeCode(recipient.type),
+                    recipient.value,
+                    amountAmount,
+                    values.token,
+                    values.message || "",
+                    expiryDays,
+                    values.theme,
+                    values.senderName || "",
+                    logoUrl || ""
+                ];
+
+                if (isFA) {
+                    functionArguments.splice(4, 0, selectedToken.faAddress);
+                }
+
+                if (externalWallet) {
+                    // --- EXTERNAL WALLET FLOW (Razor, Nightly, etc.) ---
+                    console.log("Using external Movement wallet:", (externalWallet as any).address);
+
+                    const transactionPayload = {
+                        data: {
+                            function: functionName,
+                            typeArguments: [],
+                            functionArguments
+                        }
+                    };
+
+                    const response = await (externalWallet as any).signAndSubmitTransaction(transactionPayload);
+                    const hash = response.hash || (response as any).transactionHash;
+                    console.log("Transaction Submitted:", hash);
+                    setTxHash(hash);
+
+                } else if (movementWalletFromLinked) {
+                    // --- PRIVY EMBEDDED WALLET FLOW (using signRawHash) ---
+                    console.log("Using Privy Movement wallet with signRawHash:", movementWalletFromLinked.address);
+                    console.log("Full wallet object:", JSON.stringify(movementWalletFromLinked, null, 2));
+                    console.log("All wallet keys:", Object.keys(movementWalletFromLinked));
+
+                    // Try different ID fields that Privy might use
+                    const walletObj = movementWalletFromLinked as any;
+                    const walletId = walletObj.walletId || walletObj.id || walletObj.embeddedWalletId || walletObj.address;
+                    const publicKeyStr = walletObj.publicKey;
+
+                    console.log("Trying walletId:", walletId);
+                    console.log("Available IDs:", {
+                        id: walletObj.id,
+                        walletId: walletObj.walletId,
+                        embeddedWalletId: walletObj.embeddedWalletId,
+                        address: walletObj.address
+                    });
+
+                    if (!walletId) throw new Error("Wallet ID not found for Privy wallet");
+                    if (!publicKeyStr) throw new Error("Public key not found for Privy wallet");
+
+                    const senderAddress = AccountAddress.from(ensure0x(movementWalletFromLinked.address));
+
+                    // Build transaction
+                    const transaction = await aptos.transaction.build.simple({
+                        sender: senderAddress,
+                        data: {
+                            function: functionName as any,
+                            functionArguments
+                        }
+                    });
+
+                    // Generate signing message
+                    const messageBytes = generateSigningMessageForTransaction(transaction);
+                    // Use browser-safe hex conversion
+                    const messageHexStr = Array.from(messageBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    const messageHex = `0x${messageHexStr}` as `0x${string}`;
+
+                    console.log("Requesting Client-Side Signature via signRawHash...");
+
+                    // Client-Side Signing (Required for undelegated wallets)
+                    const { signature } = await signRawHash({
+                        address: movementWalletFromLinked.address,
+                        chainType: 'aptos',
+                        hash: messageHex
+                    });
+
+                    console.log("Signature received:", signature.slice(0, 20) + "...");
+
+                    // Convert to bytes to ensure correct length handling
+                    // Remove 0x prefix if present for Buffer.from hex
+                    const cleanPublicKey = publicKeyStr.replace(/^0x/, '');
+                    const cleanSignature = signature.replace(/^0x/, '');
+
+                    let pkBytes = Buffer.from(cleanPublicKey, 'hex');
+                    const sigBytes = Buffer.from(cleanSignature, 'hex');
+
+                    // Fix: Privy might return 33-byte key (with 00 prefix), strip valid Ed25519 to 32 bytes
+                    if (pkBytes.length === 33) {
+                        console.log("Trimming 1 byte from Public Key (likely 00 prefix)");
+                        pkBytes = pkBytes.slice(1);
+                    }
+
+                    console.log("Creating Authenticator with:", {
+                        pkLength: pkBytes.length,
+                        sigLength: sigBytes.length
+                    });
+
+                    // Create authenticator and submit
+                    const authenticator = new AccountAuthenticatorEd25519(
+                        new Ed25519PublicKey(pkBytes),
+                        new Ed25519Signature(sigBytes)
+                    );
+
+                    const response = await aptos.transaction.submit.simple({
+                        transaction,
+                        senderAuthenticator: authenticator
+                    });
+
+                    console.log("Transaction Submitted:", response.hash);
+                    setTxHash(response.hash);
+
+                    await aptos.waitForTransaction({ transactionHash: response.hash });
+                    toast.success("Transaction Confirmed!");
+
+                } else {
+                    throw new Error(
+                        "No Movement wallet found. Please either:\n" +
+                        "1. Connect an external Movement wallet (Razor, Nightly), or\n" +
+                        "2. Ensure 'Movement' is enabled in your Privy Dashboard"
+                    );
+                }
+            }
 
             toast.dismiss()
-            toast.success("Gift card created successfully!")
+            toast.success("Gift cards created successfully!")
             setStep(4)
 
         } catch (error) {
+            console.error("Submission Error:", error);
             toast.dismiss()
-            toast.error("Failed to create gift card")
-            console.error(error)
+            toast.error("Transaction failed: " + (error as any).message)
         }
     }
 
@@ -239,12 +443,18 @@ export default function Send() {
                                             <TabsContent value="details" className="space-y-4">
                                                 <FormField
                                                     control={form.control}
-                                                    name="recipient"
+                                                    name="recipients"
                                                     render={({ field }) => (
                                                         <FormItem>
-                                                            <FormLabel>Recipient {watchedValues.recipientType === "email" ? "Email" : "Username"}</FormLabel>
+                                                            <FormLabel>Recipients ({field.value?.length || 0})</FormLabel>
                                                             <FormControl>
-                                                                <Input placeholder={getPlaceholder()} {...field} />
+                                                                <BulkRecipientInput
+                                                                    recipients={field.value || []}
+                                                                    onChange={field.onChange}
+                                                                    type={watchedValues.recipientType}
+                                                                    placeholder={getPlaceholder()}
+                                                                    error={form.formState.errors.recipients?.message}
+                                                                />
                                                             </FormControl>
                                                             <FormMessage />
                                                         </FormItem>
@@ -278,15 +488,87 @@ export default function Send() {
                                                                         </SelectTrigger>
                                                                     </FormControl>
                                                                     <SelectContent>
-                                                                        <SelectItem value="MOVE">MOVE</SelectItem>
-                                                                        <SelectItem value="USDC">USDC</SelectItem>
-                                                                        <SelectItem value="USDT">USDT</SelectItem>
+                                                                        {TOKENS.map((t) => (
+                                                                            <SelectItem key={t.symbol} value={t.symbol}>
+                                                                                <div className="flex items-center gap-2">
+                                                                                    {t.logoUrl && (
+                                                                                        <img src={t.logoUrl} alt={t.symbol} className="w-5 h-5 rounded-full" />
+                                                                                    )}
+                                                                                    <span>{t.symbol}</span>
+                                                                                </div>
+                                                                            </SelectItem>
+                                                                        ))}
                                                                     </SelectContent>
                                                                 </Select>
                                                             </FormItem>
                                                         )}
                                                     />
                                                 </div>
+
+                                                <FormField
+                                                    control={form.control}
+                                                    name="expiryDate"
+                                                    render={({ field }) => (
+                                                        <FormItem className="flex flex-col">
+                                                            <FormLabel>Expiry Date</FormLabel>
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <FormControl>
+                                                                        <Button
+                                                                            variant={"outline"}
+                                                                            className={cn(
+                                                                                "w-full pl-3 text-left font-normal",
+                                                                                !field.value && "text-muted-foreground"
+                                                                            )}
+                                                                        >
+                                                                            {field.value ? (
+                                                                                format(field.value, "PPP")
+                                                                            ) : (
+                                                                                <span>Pick a date</span>
+                                                                            )}
+                                                                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                                                        </Button>
+                                                                    </FormControl>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-auto p-0 bg-zinc-900 border-white/10 text-white z-50" align="start">
+                                                                    <Calendar
+                                                                        mode="single"
+                                                                        selected={field.value}
+                                                                        onSelect={field.onChange}
+                                                                        disabled={(date) =>
+                                                                            date < new Date() || date < new Date("1900-01-01")
+                                                                        }
+                                                                        initialFocus
+                                                                        className="bg-zinc-900 text-white"
+                                                                        classNames={{
+                                                                            day_selected: "bg-purple-600 text-white hover:bg-purple-600 focus:bg-purple-600",
+                                                                            day_today: "bg-white/10 text-white",
+                                                                            day: "text-white hover:bg-white/10 rounded-md",
+                                                                            head_cell: "text-gray-400",
+                                                                            caption_label: "text-white font-bold",
+                                                                            nav_button: "border-white/10 hover:bg-white/10 text-white"
+                                                                        }}
+                                                                    />
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                            <div className="flex gap-2 mt-2">
+                                                                {[7, 30, 90].map((days) => (
+                                                                    <Button
+                                                                        key={days}
+                                                                        type="button"
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="flex-1 text-xs"
+                                                                        onClick={() => form.setValue("expiryDate", addDays(new Date(), days))}
+                                                                    >
+                                                                        {days} Days
+                                                                    </Button>
+                                                                ))}
+                                                            </div>
+                                                            <FormMessage />
+                                                        </FormItem>
+                                                    )}
+                                                />
 
                                                 <FormField
                                                     control={form.control}
@@ -399,17 +681,35 @@ export default function Send() {
                                     <CardContent className="space-y-4">
                                         <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm">
                                             <div className="flex justify-between">
-                                                <span className="text-gray-500">Amount</span>
+                                                <span className="text-gray-500">Amount per Card</span>
                                                 <span className="font-medium">{watchedValues.amount} {watchedValues.token}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-gray-500">Recipient</span>
-                                                <span className="font-medium">{watchedValues.recipient}</span>
+                                                <span className="text-gray-500">Total Recipients</span>
+                                                <span className="font-medium">{watchedValues.recipients?.length || 0}</span>
+                                            </div>
+                                            <div className="flex justify-between border-t border-gray-200 pt-2 mt-2">
+                                                <span className="text-gray-900 font-bold">Total Amount</span>
+                                                <span className="font-bold text-purple-600">
+                                                    {(parseFloat(watchedValues.amount || "0") * (watchedValues.recipients?.length || 0)).toFixed(2)} {watchedValues.token}
+                                                </span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-gray-500">Fee</span>
-                                                <span className="font-medium">{(parseFloat(watchedValues.amount || "0") * 0.005).toFixed(4)} {watchedValues.token} (0.5%)</span>
+                                                <span className="text-gray-500">Network Fee (0.5%)</span>
+                                                <span className="font-medium">{(parseFloat(watchedValues.amount || "0") * (watchedValues.recipients?.length || 0) * 0.005).toFixed(4)} {watchedValues.token}</span>
                                             </div>
+                                        </div>
+
+                                        <div className="max-h-32 overflow-y-auto border rounded-md p-2">
+                                            <p className="text-xs font-semibold text-gray-500 mb-2 sticky top-0 bg-white">Recipient List:</p>
+                                            <ul className="space-y-1">
+                                                {watchedValues.recipients?.map((r, i) => (
+                                                    <li key={r.id} className="text-xs flex justify-between">
+                                                        <span>{i + 1}. {r.value}</span>
+                                                        <span className="uppercase text-[10px] text-gray-400">{r.type}</span>
+                                                    </li>
+                                                ))}
+                                            </ul>
                                         </div>
 
                                         <div className="flex justify-between pt-4">
@@ -489,15 +789,44 @@ export default function Send() {
                                 <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
                                     <Check className="h-10 w-10 text-green-600" />
                                 </div>
-                                <h2 className="text-3xl font-bold mb-2">Gift Sent! 🎉</h2>
+                                <h2 className="text-3xl font-bold mb-2">
+                                    {watchedValues.recipients?.length > 1
+                                        ? `${watchedValues.recipients.length} Gifts Sent! 🎉`
+                                        : "Gift Sent! 🎉"
+                                    }
+                                </h2>
                                 <p className="text-gray-600 mb-8">
-                                    Your gift card has been created and the recipient has been notified.
+                                    Your gift cards have been created and the recipients have been notified.
                                 </p>
 
                                 {/* Preview Area for Capture */}
-                                <div className="mb-8 transform scale-90" id="gift-card-capture">
+                                <div className="mb-4 transform scale-90" id="gift-card-capture">
                                     {renderPreview("card")}
                                 </div>
+
+                                {watchedValues.recipients?.length > 1 && (
+                                    <div className="flex justify-center gap-2 mb-8">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={previewRecipientIndex === 0}
+                                            onClick={() => setPreviewRecipientIndex(p => Math.max(0, p - 1))}
+                                        >
+                                            Prev
+                                        </Button>
+                                        <span className="text-sm self-center text-gray-500">
+                                            {previewRecipientIndex + 1} / {watchedValues.recipients.length}
+                                        </span>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            disabled={previewRecipientIndex === watchedValues.recipients.length - 1}
+                                            onClick={() => setPreviewRecipientIndex(p => Math.min(watchedValues.recipients.length - 1, p + 1))}
+                                        >
+                                            Next
+                                        </Button>
+                                    </div>
+                                )}
 
                                 <div className="bg-gray-50 rounded-lg p-4 mb-6">
                                     <p className="text-sm text-gray-500 mb-1">Transaction Hash</p>
@@ -511,7 +840,7 @@ export default function Send() {
 
                                 {/* Social Sharing */}
                                 <div className="space-y-4 mb-8">
-                                    <p className="text-sm font-medium text-gray-500">Share with Recipient</p>
+                                    <p className="text-sm font-medium text-gray-500">Share with Recipients</p>
 
                                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                         {/* X / Twitter */}
@@ -528,7 +857,7 @@ export default function Send() {
                                                         link.click();
 
                                                         setTimeout(() => {
-                                                            const text = encodeURIComponent("I just sent you a crypto gift card on Move! 🎁✨\n\nClaim it here: ")
+                                                            const text = encodeURIComponent("I just sent crypto gift cards on Move! 🎁✨\n\nClaim here: ")
                                                             const url = encodeURIComponent(`${window.location.origin}/claim?id=${txHash}`)
                                                             window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, '_blank')
                                                             toast.success("Image downloaded! Attach it to your tweet! 📸")
@@ -547,7 +876,7 @@ export default function Send() {
                                         <Button
                                             className="bg-[#5865F2] hover:bg-[#4752C4] text-white w-full"
                                             onClick={() => {
-                                                const text = `I sent you a crypto gift card! 🎁\n\nClaim here: ${window.location.origin}/claim?id=${txHash}`
+                                                const text = `I sent crypto gift cards! 🎁\n\nClaim here: ${window.location.origin}/claim?id=${txHash}`
                                                 navigator.clipboard.writeText(text)
                                                 toast.success("Copied to clipboard! Paste in Discord 💬")
                                             }}
@@ -629,7 +958,7 @@ export default function Send() {
                                                         srcDoc={generateEmailHtml({
                                                             amount: watchedValues.amount,
                                                             token: watchedValues.token,
-                                                            recipient: watchedValues.recipient,
+                                                            recipient: watchedValues.recipients?.[previewRecipientIndex]?.value || "Recipient",
                                                             senderName: watchedValues.senderName,
                                                             message: watchedValues.message,
                                                             txHash: txHash,
