@@ -42,14 +42,22 @@ module giftcards_addr::test_giftcards {
         // Create gift card
         let recipient_id = string::utf8(b"alice@example.com");
         let amount = 10000000; // 0.1 APT
+        let token_type = string::utf8(b"MOVE");
         let message = string::utf8(b"Happy Birthday!");
+        let theme_id = string::utf8(b"modern");
+        let from_name = string::utf8(b"Test Sender");
+        let logo_url = string::utf8(b"");
         move_giftcards::create_giftcard_move(
             sender,
             1, // email
             recipient_id,
             amount,
+            token_type,
             message,
-            30 // 30 days expiry
+            30, // 30 days expiry
+            theme_id,
+            from_name,
+            logo_url
         );
 
         // Verify stats
@@ -64,7 +72,7 @@ module giftcards_addr::test_giftcards {
         move_giftcards::claim_giftcard(claimer, giftcard_id, recipient_id);
 
         // Verify claim
-        let (_, _, _, _, _, _, _, _, is_claimed, claimed_by_addr, _) = move_giftcards::get_giftcard(giftcard_id);
+        let (_, _, _, _, _, _, _, _, _, _, _, _, is_claimed, claimed_by_addr, _) = move_giftcards::get_giftcard(giftcard_id);
         assert!(is_claimed, 4);
         assert!(claimed_by_addr == signer::address_of(claimer), 5);
 
@@ -91,7 +99,16 @@ module giftcards_addr::test_giftcards {
         let recipient_id = string::utf8(b"bob@example.com");
         let amount = 10000000;
         move_giftcards::create_giftcard_move(
-            sender, 1, recipient_id, amount, string::utf8(b"Expire me"), 1 // 1 day expiry
+            sender,
+            1, // email
+            recipient_id,
+            amount,
+            string::utf8(b"MOVE"),
+            string::utf8(b"Expire me"),
+            1, // 1 day expiry
+            string::utf8(b"modern"),
+            string::utf8(b""),
+            string::utf8(b"")
         );
 
         // Fast forward 2 days (86400 * 2 seconds)
