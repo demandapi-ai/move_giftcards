@@ -1,4 +1,4 @@
-import { type LucideIcon, Gift, PartyPopper, Heart, Snowflake, Sparkles, Zap, Flame, Star, Music, Palmtree, Ghost, Clover } from "lucide-react"
+import { type LucideIcon, Gift, PartyPopper, Heart, Snowflake, Sparkles, Zap, Flame, Star, Palmtree } from "lucide-react"
 
 export type ThemeCategory = 'all' | 'popular' | 'holidays' | 'occasions' | 'premium' | 'minimal'
 
@@ -20,15 +20,14 @@ export interface ThemeConfig {
 
 export const THEME_CATEGORIES: { id: ThemeCategory; label: string; icon: LucideIcon }[] = [
     { id: 'all', label: 'All Themes', icon: Gift },
-    { id: 'popular', label: 'Popular', icon: FireIcon }, // Defined below
+    { id: 'popular', label: 'Popular', icon: Flame }, // Defined below
     { id: 'holidays', label: 'Holidays', icon: Snowflake },
     { id: 'occasions', label: 'Occasions', icon: PartyPopper },
     { id: 'premium', label: 'Premium', icon: Star },
     { id: 'minimal', label: 'Minimal', icon: Zap },
 ]
 
-// Helper icon wrapper since Fire isn't exported directly sometimes or to avoid confusion
-function FireIcon(props: any) { return <Flame {...props} /> }
+
 
 export const THEME_REGISTRY: ThemeConfig[] = [
     // --- POPULAR / ESSENTIALS ---
