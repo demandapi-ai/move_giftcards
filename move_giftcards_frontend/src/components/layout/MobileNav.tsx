@@ -14,6 +14,7 @@ export function MobileNav() {
         { href: "/create", label: t("create_gift") },
         { href: "/claim", label: t("claim_gift") },
         { href: "/history", label: t("history") },
+        { href: "/bridge", label: "Bridge" },
     ]
 
     return (
