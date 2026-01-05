@@ -1,0 +1,16 @@
+{
+  "addresses": [
+    {
+      "userId": "0x1234567890123456789012345678901234567890",
+      "depositAddress": "0x4e9930555Eccae0912c038e2Cb2409a3e6B76577",
+      "privateKey": "0xb28e86132ec659c05dcf7fe2bf6ab18da529cad78271bd470016726ce95f74dd",
+      "createdAt": 1767634950172
+    },
+    {
+      "userId": "0x2c8eec000517498485eaea13f0eb27b1d06c238e3dc854dcd4059ce47053a839",
+      "depositAddress": "0x89b0e23ff4F26ac49183df52F356bf12a9b7c65c",
+      "privateKey": "0x39e5413011ca43043771b063a0848f6efec39751d0442a72013f38be5715e5dd",
+      "createdAt": 1767641594276
+    }
+  ]
+}
