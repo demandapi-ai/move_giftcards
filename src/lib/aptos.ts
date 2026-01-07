@@ -18,7 +18,7 @@ export const MOVEMENT_CONFIGS = {
     }
 };
 
-export const CONTRACT_ADDRESS = "0xc0a4f49b38e09756f583eee695592d7e000c1027396378deada63746005e4193"; // Deployed address
+export const CONTRACT_ADDRESS = "0xf472a9735febdf619040db29e4f564e77ac5fbc6ea829d7f9cd9563fc8743b8d"; // Deployed address
 
 const selectedConfig = MOVEMENT_CONFIGS[CURRENT_NETWORK];
 
