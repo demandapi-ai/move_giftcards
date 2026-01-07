@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "node server.js",
+    "relayer": "cd ../bridge_relayer && npm run dev",
+    "localdeploy": "concurrently \"npm run server\" \"npm run dev\" \"npm run relayer\""
   },
   "dependencies": {
     "@aptos-labs/ts-sdk": "^5.2.0",
@@ -79,6 +82,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "autoprefixer": "^10.4.23",
+    "concurrently": "^9.2.1",
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
