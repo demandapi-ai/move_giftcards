@@ -1,6 +1,6 @@
 // Basic client for the Bridge Relayer API
 
-const RELAYER_URL = 'http://localhost:3001';
+const RELAYER_URL = import.meta.env.VITE_RELAYER_URL || 'http://localhost:3001';
 
 export interface DepositAddressResponse {
     depositAddress: string;
