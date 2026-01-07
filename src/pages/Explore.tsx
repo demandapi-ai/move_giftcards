@@ -158,7 +158,7 @@ export default function Explore() {
 
             // 1. Get backend signature
             const authToken = await getAccessToken()
-            const response = await fetch("http://localhost:3000/api/verify-explore-eligibility", {
+            const response = await fetch(`${import.meta.env.VITE_SIGNING_SERVER_URL || 'http://localhost:3000'}/api/verify-explore-eligibility`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
