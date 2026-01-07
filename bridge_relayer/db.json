@@ -11,6 +11,12 @@
       "depositAddress": "0x89b0e23ff4F26ac49183df52F356bf12a9b7c65c",
       "privateKey": "0x39e5413011ca43043771b063a0848f6efec39751d0442a72013f38be5715e5dd",
       "createdAt": 1767641594276
+    },
+    {
+      "userId": "0xc99dbf6b84ad53b753a62039b0b19177bce9638c9a9c8787a9885c3ea2a6e2cd",
+      "depositAddress": "0x0261850FE410862cAc6CBaaB3b1C72e876d9Df8b",
+      "privateKey": "0x6e75690e7aef63f718814de4e832bb09842becd884e2dc037755891ccdbfc5ee",
+      "createdAt": 1767689613730
     }
   ]
 }
