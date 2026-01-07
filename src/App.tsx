@@ -7,6 +7,7 @@ import Claim from "./pages/Claim"
 import ClaimGift from "./pages/ClaimGift"
 import History from "./pages/History"
 import Bridge from "./pages/Bridge"
+import Explore from "./pages/Explore"
 import { Toaster } from "@/components/ui/sonner"
 import { usePrivy } from "@privy-io/react-auth"
 
@@ -55,6 +56,7 @@ function App() {
           <Route path="/claim/redeem" element={<ClaimGift />} />
           <Route path="/history" element={<History />} />
           <Route path="/bridge" element={<Bridge />} />
+          <Route path="/explore" element={<Explore />} />
         </Route>
       </Routes>
       <Toaster position="top-right" />

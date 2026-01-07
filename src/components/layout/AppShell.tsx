@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation, useNavigate } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { usePrivy } from "@privy-io/react-auth"
 import { useTranslation } from "react-i18next"
-import { Moon, Sun, Languages, Gift, LayoutDashboard, Send, Download, History, LogOut, Menu } from "lucide-react"
+import { Moon, Sun, Languages, Gift, LayoutDashboard, Send, Download, History, LogOut, Menu, ArrowLeftRight, Compass } from "lucide-react"
 import { useTheme } from "@/components/theme-provider"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
@@ -12,6 +12,8 @@ const navItems = [
     { href: "/send", label: "Send Gift", icon: Send },
     { href: "/claim", label: "Claim", icon: Download },
     { href: "/history", label: "History", icon: History },
+    { href: "/bridge", label: "Bridge", icon: ArrowLeftRight },
+    { href: "/explore", label: "Explore", icon: Compass },
 ]
 
 export function AppShell() {
