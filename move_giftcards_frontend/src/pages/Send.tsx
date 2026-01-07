@@ -190,8 +190,6 @@ export default function Send() {
                 const decimals = selectedToken.decimals;
                 const amountAmount = Math.floor(parseFloat(values.amount) * Math.pow(10, decimals));
 
-                const recipientAddr = "0x" + "0".repeat(64); // Dummy for now if needed, or actual if known
-
                 let functionArguments: any[] = [
                     getRecipientTypeCode(recipient.type),
                     recipient.value,

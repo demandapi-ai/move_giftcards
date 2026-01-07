@@ -1,18 +1,19 @@
 import { Link, useLocation } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/lib/utils"
-import { Gift, Home, History, Download, ArrowLeftRight } from "lucide-react"
+import { Gift, Home, History, Download, ArrowLeftRight, Compass } from "lucide-react"
 
 export function Sidebar() {
     const { t } = useTranslation()
     const location = useLocation()
 
     const routes = [
-        { href: "/", label: t("dashboard"), icon: Home },
-        { href: "/create", label: t("create_gift"), icon: Gift },
+        { href: "/dashboard", label: t("dashboard"), icon: Home },
+        { href: "/send", label: t("create_gift"), icon: Gift },
         { href: "/claim", label: t("claim_gift"), icon: Download },
         { href: "/history", label: t("history"), icon: History },
-        { href: "/bridge", label: "Bridge", icon: ArrowLeftRight },
+        { href: "/bridge", label: t("bridge"), icon: ArrowLeftRight },
+        { href: "/explore", label: "Explore", icon: Compass },
     ]
 
     return (

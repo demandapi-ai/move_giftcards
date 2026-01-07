@@ -81,6 +81,7 @@ export default function Dashboard() {
 
     // ... inside component ...
     const [balances, setBalances] = useState<(TokenInfo & { amount: string, usdValue: string })[]>([])
+    // @ts-ignore
     const [isLoadingBalances, setIsLoadingBalances] = useState(false)
 
     useEffect(() => {
